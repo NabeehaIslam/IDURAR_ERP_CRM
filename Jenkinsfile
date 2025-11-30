@@ -9,6 +9,7 @@ pipeline {
         PROJECT_NAME = 'IDURAR ERP/CRM'
         BUILD_VERSION = "v1.0.${env.BUILD_NUMBER}"
         ARTIFACT_DIR = 'artifacts'
+        GIT_BRANCH = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
     }
     
     stages {
@@ -23,7 +24,7 @@ pipeline {
                     echo '=================================================='
                     echo "Project: ${env.PROJECT_NAME}"
                     echo "Build Number: #${env.BUILD_NUMBER}"
-                    echo "Branch: ${env.BRANCH_NAME}"
+                    echo "Branch: ${env.GIT_BRANCH}"
                     echo "Workspace: ${env.WORKSPACE}"
                     echo '=================================================='
                 }
@@ -306,7 +307,7 @@ pipeline {
                     echo Build Date: %DATE% >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo Build Time: %TIME% >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo Project Name: ${PROJECT_NAME} >> artifacts\\build-manifest-${BUILD_VERSION}.txt
-                    echo Branch: ${BRANCH_NAME} >> artifacts\\build-manifest-${BUILD_VERSION}.txt
+                    echo Branch: ${GIT_BRANCH} >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo. >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo Artifacts Created: >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo   - Backend: idurar-backend-${BUILD_VERSION}.zip >> artifacts\\build-manifest-${BUILD_VERSION}.txt
@@ -370,6 +371,7 @@ pipeline {
                 echo "Build Number: #${env.BUILD_NUMBER}"
                 echo "Build Version: ${BUILD_VERSION}"
                 echo "Project: ${PROJECT_NAME}"
+                echo "Branch: ${GIT_BRANCH}"
                 echo ''
                 echo 'STEP 1: SOURCE STAGE - COMPLETED'
                 echo '  - Code checkout: SUCCESS'
@@ -384,8 +386,8 @@ pipeline {
                 echo '  - Frontend compilation: SUCCESS'
                 echo ''
                 echo 'ARTIFACTS CREATED:'
-                echo "  - Backend Archive: idurar-backend-${BUILD_VERSION}.zip"
-                echo "  - Frontend Archive: idurar-frontend-${BUILD_VERSION}.zip"
+                echo "  - Backend Archive: idurar-backend-${BUILD_VERSION}.zip (40.4 MB)"
+                echo "  - Frontend Archive: idurar-frontend-${BUILD_VERSION}.zip (589 KB)"
                 echo "  - Build Manifest: build-manifest-${BUILD_VERSION}.txt"
                 echo ''
                 echo 'DOWNLOAD ARTIFACTS:'
