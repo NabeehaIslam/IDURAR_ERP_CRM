@@ -9,7 +9,6 @@ pipeline {
         PROJECT_NAME = 'IDURAR ERP/CRM'
         BUILD_VERSION = "v1.0.${env.BUILD_NUMBER}"
         ARTIFACT_DIR = 'artifacts'
-        GIT_BRANCH = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
     }
     
     stages {
@@ -19,12 +18,14 @@ pipeline {
         stage('Source: Code Checkout') {
             steps {
                 script {
+                    def gitBranch = bat(script: '@git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    
                     echo '=================================================='
                     echo '      STEP 1: SOURCE CODE CHECKOUT'
                     echo '=================================================='
                     echo "Project: ${env.PROJECT_NAME}"
                     echo "Build Number: #${env.BUILD_NUMBER}"
-                    echo "Branch: ${env.GIT_BRANCH}"
+                    echo "Branch: ${gitBranch}"
                     echo "Workspace: ${env.WORKSPACE}"
                     echo '=================================================='
                 }
@@ -293,6 +294,8 @@ pipeline {
                     echo '=================================================='
                     echo '      GENERATING BUILD MANIFEST'
                     echo '=================================================='
+                    
+                    def gitBranch = bat(script: '@git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
                 }
                 
                 bat """
@@ -307,7 +310,6 @@ pipeline {
                     echo Build Date: %DATE% >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo Build Time: %TIME% >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo Project Name: ${PROJECT_NAME} >> artifacts\\build-manifest-${BUILD_VERSION}.txt
-                    echo Branch: ${GIT_BRANCH} >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo. >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo Artifacts Created: >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo   - Backend: idurar-backend-${BUILD_VERSION}.zip >> artifacts\\build-manifest-${BUILD_VERSION}.txt
@@ -365,13 +367,15 @@ pipeline {
     post {
         success {
             script {
+                def gitBranch = bat(script: '@git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                
                 echo '=================================================='
                 echo '         BUILD PIPELINE COMPLETED SUCCESSFULLY'
                 echo '=================================================='
                 echo "Build Number: #${env.BUILD_NUMBER}"
                 echo "Build Version: ${BUILD_VERSION}"
                 echo "Project: ${PROJECT_NAME}"
-                echo "Branch: ${GIT_BRANCH}"
+                echo "Branch: ${gitBranch}"
                 echo ''
                 echo 'STEP 1: SOURCE STAGE - COMPLETED'
                 echo '  - Code checkout: SUCCESS'
