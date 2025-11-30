@@ -210,7 +210,26 @@ pipeline {
                 }
             }
         }
+        // ============================================
+        // OLD ARTIFACT CLEANUP
+        // ============================================
+        stage('Artifact: Clean Old Artifacts') {
+    steps {
+        script {
+            echo '=================================================='
+            echo '      CLEANING OLD ARTIFACTS'
+            echo '=================================================='
+        }
         
+        bat """
+            if exist "${ARTIFACT_DIR}" (
+                echo Removing old artifacts directory...
+                rmdir /s /q ${ARTIFACT_DIR}
+            )
+            echo Old artifacts cleaned
+        """
+    }
+}
         // ============================================
         // ARTIFACT CREATION
         // ============================================
