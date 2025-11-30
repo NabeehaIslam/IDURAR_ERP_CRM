@@ -11,7 +11,7 @@ pipeline {
     }
     
     stages {
-        stage('1️⃣ Source: Code Checkout') {
+        stage('1️ Source: Code Checkout') {
             steps {
                 script {
                     echo '=================================================='
@@ -26,11 +26,11 @@ pipeline {
                 
                 checkout scm
                 
-                echo '✅ Source code checked out successfully!'
+                echo ' Source code checked out successfully!'
             }
         }
         
-        stage('2️⃣ Source: Repository Structure') {
+        stage('2️ Source: Repository Structure') {
             steps {
                 script {
                     echo '=================================================='
@@ -40,21 +40,21 @@ pipeline {
                 
                 bat '''
                     echo.
-                    echo 📁 Repository Contents:
+                    echo  Repository Contents:
                     dir /B
                     
                     echo.
-                    echo 🔍 Checking Project Structure:
-                    if exist "backend" echo ✅ Backend directory found
-                    if exist "frontend" echo ✅ Frontend directory found
-                    if exist "package.json" echo ✅ Root package.json found
-                    if exist "README.md" echo ✅ README.md found
-                    if exist ".env.example" echo ✅ .env.example found
+                    echo  Checking Project Structure:
+                    if exist "backend" echo  Backend directory found
+                    if exist "frontend" echo  Frontend directory found
+                    if exist "package.json" echo  Root package.json found
+                    if exist "README.md" echo  README.md found
+                    if exist ".env.example" echo  .env.example found
                 '''
             }
         }
         
-        stage('3️⃣ Source: Environment Verification') {
+        stage('3️ Source: Environment Verification') {
             steps {
                 script {
                     echo '=================================================='
@@ -64,21 +64,21 @@ pipeline {
                 
                 bat '''
                     echo.
-                    echo 🔧 Node.js Version:
+                    echo  Node.js Version:
                     node --version
                     
                     echo.
-                    echo 📦 NPM Version:
+                    echo  NPM Version:
                     npm --version
                     
                     echo.
-                    echo 🌿 Git Version:
+                    echo  Git Version:
                     git --version
                 '''
             }
         }
         
-        stage('4️⃣ Source: Dependencies Analysis') {
+        stage('4️ Source: Dependencies Analysis') {
             steps {
                 script {
                     echo '=================================================='
@@ -87,36 +87,36 @@ pipeline {
                 }
                 
                 script {
-                    echo '🔍 Backend Dependencies:'
+                    echo ' Backend Dependencies:'
                 }
                 bat '''
                     cd backend
                     if exist "package.json" (
                         type package.json | findstr "name"
                         type package.json | findstr "version"
-                        echo ✅ Backend package.json analyzed
+                        echo  Backend package.json analyzed
                     ) else (
-                        echo ❌ Backend package.json not found
+                        echo  Backend package.json not found
                     )
                 '''
                 
                 script {
-                    echo '🔍 Frontend Dependencies:'
+                    echo ' Frontend Dependencies:'
                 }
                 bat '''
                     cd frontend
                     if exist "package.json" (
                         type package.json | findstr "name"
                         type package.json | findstr "version"
-                        echo ✅ Frontend package.json analyzed
+                        echo  Frontend package.json analyzed
                     ) else (
-                        echo ❌ Frontend package.json not found
+                        echo  Frontend package.json not found
                     )
                 '''
             }
         }
         
-        stage('5️⃣ Source: Git Metadata') {
+        stage('5️ Source: Git Metadata') {
             steps {
                 script {
                     echo '=================================================='
@@ -126,16 +126,16 @@ pipeline {
                 
                 bat '''
                     echo.
-                    echo 📝 Latest Commit Details:
+                    echo  Latest Commit Details:
                     git log -1 --pretty=format:"Commit Hash: %%h%%nAuthor: %%an%%nDate: %%ad%%nMessage: %%s"
                     
                     echo.
                     echo.
-                    echo 📊 Changed Files:
+                    echo  Changed Files:
                     git diff-tree --no-commit-id --name-status -r HEAD
                     
                     echo.
-                    echo 🌿 Current Branch:
+                    echo  Current Branch:
                     git branch --show-current
                 '''
             }
@@ -146,7 +146,7 @@ pipeline {
         success {
             script {
                 echo '=================================================='
-                echo '         ✅ BUILD SUCCESS!'
+                echo '          BUILD SUCCESS!'
                 echo '=================================================='
                 echo "Build #${env.BUILD_NUMBER} completed successfully"
                 echo "Project: ${env.PROJECT_NAME}"
@@ -158,7 +158,7 @@ pipeline {
         failure {
             script {
                 echo '=================================================='
-                echo '         ❌ BUILD FAILED!'
+                echo '          BUILD FAILED!'
                 echo '=================================================='
                 echo "Build #${env.BUILD_NUMBER} failed"
                 echo "Check console output for errors"
