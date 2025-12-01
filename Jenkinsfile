@@ -8,7 +8,7 @@ pipeline {
     agent any  
     
     tools {
-        nodejs 'NodeJS' 
+        nodejs 'NodeJS20.9' 
     }
     
     environment {
@@ -135,7 +135,7 @@ pipeline {
         }
         
         // Stage 3: Verify build tools are installed and configured
-     stage('Source: Environment Verification') {
+      stage('Source: Environment Verification') {
     steps {
         script {
             echo '=================================================='
