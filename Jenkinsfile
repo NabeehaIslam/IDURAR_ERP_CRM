@@ -135,39 +135,38 @@ pipeline {
         }
         
         // Stage 3: Verify build tools are installed and configured
-        stage('Source: Environment Verification') {
-            steps {
-                script {
-                    echo '=================================================='
-                    echo '      VERIFYING BUILD ENVIRONMENT'
-                    echo '=================================================='
-                }
-                
-                bat '''
-                    REM Check Node.js version (required for building)
-                    echo Node.js Version:
-                    node --version
-                    
-                    echo.
-                    REM Check npm version (package manager)
-                    echo NPM Version:
-                    npm --version
-                    
-                    echo.
-                    REM Check Git version (source control)
-                    echo Git Version:
-                    git --version
-                    
-                    echo.
-                    REM DEPENDENCY FIX: Configure npm to handle peer dependency conflicts
-                    REM legacy-peer-deps allows npm to bypass strict peer dependency checks
-                    echo [DEPENDENCY FIX] Configuring npm for better dependency resolution...
-                    npm config set legacy-peer-deps true
-                    echo npm configured successfully!
-                '''
-            }
+      stage('Source: Environment Verification') {
+    steps {
+        script {
+            echo '=================================================='
+            echo '      VERIFYING BUILD ENVIRONMENT'
+            echo '=================================================='
         }
         
+        bat '''
+            REM Check Node.js version (required for building)
+            echo Node.js Version:
+            node --version
+            
+            echo.
+            REM Check npm version (package manager)
+            echo NPM Version:
+            npm --version
+            
+            echo.
+            REM Check Git version (source control)
+            echo Git Version:
+            git --version
+            
+            echo.
+            REM DEPENDENCY FIX: Configure npm to handle peer dependency conflicts
+            REM legacy-peer-deps allows npm to bypass strict peer dependency checks
+            echo [DEPENDENCY FIX] Configuring npm for better dependency resolution...
+            npm config set legacy-peer-deps true
+            echo npm configured successfully!
+        '''
+    }
+}
         // Stage 4: Extract Git commit information for traceability
         stage('Source: Git Metadata') {
             steps {
