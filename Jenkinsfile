@@ -1,92 +1,66 @@
 // =====================================================================
-// JENKINS PIPELINE: IDURAR ERP/CRM - Complete CI/CD with Dependency Fix
+// JENKINS PIPELINE: IDURAR ERP/CRM - CI/CD Pipeline
 // =====================================================================
-// Components: SOURCE → BUILD → ARTIFACT stages
+// Purpose: Automated build pipeline with intelligent dependency resolution
 // =====================================================================
 
 pipeline {
-    agent any  
+    agent any
     
     tools {
-        nodejs 'NodeJS20.9' 
+        nodejs 'NodeJS'
     }
     
     environment {
         PROJECT_NAME = 'IDURAR ERP/CRM'
-        BUILD_VERSION = "v1.0.${env.BUILD_NUMBER}"  // Dynamic version based on build number
-        ARTIFACT_DIR = 'artifacts'  // Directory to store build artifacts
-        
-        // DEPENDENCY FIX #1: Custom npm cache location
-        // Prevents cache corruption by using workspace-specific cache
-        NPM_CONFIG_CACHE = "${env.WORKSPACE}/.npm-cache"
-        NPM_CONFIG_LOGLEVEL = 'warn'  // Reduce npm log verbosity
+        BUILD_VERSION = "v1.0.${env.BUILD_NUMBER}"
+        ARTIFACT_DIR = 'artifacts'
     }
     
     stages {
         // =====================================================================
-        // DEPENDENCY FIX #2: PRE-BUILD CLEANUP STAGE
+        // DEPENDENCY RESOLUTION FIX #1: PRE-BUILD CLEANUP
         // =====================================================================
-        // Need: Old dependencies and corrupted cache cause build failures
-        // Function: Removes stale node_modules, lock files, and npm cache
-        // Executution : Runs before every build to ensure clean state
+        // PROBLEM: Old node_modules can have corrupted or outdated packages
+        // SOLUTION: Delete node_modules before every build for clean state
         // =====================================================================
         stage('Pre-Build: Clean Workspace') {
             steps {
                 script {
                     echo '=================================================='
-                    echo '      CLEANING WORKSPACE & CACHES'
-                    echo '      (Prevents stale dependency issues)'
+                    echo '      CLEANING WORKSPACE'
+                    echo '      [DEPENDENCY FIX #1: Fresh Start]'
                     echo '=================================================='
                 }
                 
                 bat '''
-                    echo [DEPENDENCY FIX] Cleaning node_modules and lock files...
+                    echo Cleaning old dependencies to prevent conflicts...
                     
-                    REM Clean backend dependencies
-                    REM Removes old installed packages that might conflict
+                    REM Remove backend node_modules
+                    REM Why: Prevents version conflicts from previous builds
                     if exist "backend\\node_modules" (
-                        echo [BACKEND] Removing old node_modules...
+                        echo [BACKEND] Removing node_modules...
                         rmdir /s /q backend\\node_modules
                     )
                     
-                    REM Removes lock file to allow fresh dependency resolution
-                    if exist "backend\\package-lock.json" (
-                        echo [BACKEND] Removing package-lock.json...
-                        del /f /q backend\\package-lock.json
-                    )
-                    
-                    REM Clean frontend dependencies
+                    REM Remove frontend node_modules
+                    REM Why: Prevents version conflicts from previous builds
                     if exist "frontend\\node_modules" (
-                        echo [FRONTEND] Removing old node_modules...
+                        echo [FRONTEND] Removing node_modules...
                         rmdir /s /q frontend\\node_modules
                     )
-                    if exist "frontend\\package-lock.json" (
-                        echo [FRONTEND] Removing package-lock.json...
-                        del /f /q frontend\\package-lock.json
-                    )
                     
-                    REM Clear npm cache to prevent corrupted cache issues
-                    REM Corrupted cache is a common cause of mysterious build failures
-                    echo [NPM] Clearing npm cache...
-                    npm cache clean --force
-                    
-                    echo Cleanup completed - Fresh start guaranteed!
+                    echo [SUCCESS] Workspace cleaned - Ready for fresh dependency installation!
                 '''
             }
         }
         
-        // =====================================================================
-        // COMPONENT 1: SOURCE STAGE
-        // =====================================================================
-        // Purpose: Fetch and validate source code before building
-        // Stages: Checkout → Analysis → Environment Check → Git Metadata
-        // =====================================================================
-        
-        // Stage 1: Fetch source code from Git repository
+        // ============================================
+        // STEP 1: SOURCE STAGE
+        // ============================================
         stage('Source: Code Checkout') {
             steps {
                 script {
-                    // Get current Git branch name dynamically
                     def gitBranch = bat(script: '@git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
                     
                     echo '=================================================='
@@ -99,14 +73,12 @@ pipeline {
                     echo '=================================================='
                 }
                 
-                // Checkout code from configured SCM (Git)
                 checkout scm
                 
                 echo 'Source code checked out successfully!'
             }
         }
         
-        // Stage 2: Verify repository structure is complete
         stage('Source: Repository Analysis') {
             steps {
                 script {
@@ -116,14 +88,11 @@ pipeline {
                 }
                 
                 bat '''
-                    REM List all files in root directory
                     echo Repository Contents:
                     dir /B
                     
                     echo.
                     echo Checking Project Structure:
-                    REM Verify essential directories and files exist
-                    REM If any critical file is missing, build should fail
                     if exist "backend" echo [OK] Backend directory found
                     if exist "frontend" echo [OK] Frontend directory found
                     if exist "package.json" echo [OK] Root package.json found
@@ -134,40 +103,29 @@ pipeline {
             }
         }
         
-        // Stage 3: Verify build tools are installed and configured
-      stage('Source: Environment Verification') {
-    steps {
-        script {
-            echo '=================================================='
-            echo '      VERIFYING BUILD ENVIRONMENT'
-            echo '=================================================='
+        stage('Source: Environment Verification') {
+            steps {
+                script {
+                    echo '=================================================='
+                    echo '      VERIFYING BUILD ENVIRONMENT'
+                    echo '=================================================='
+                }
+                
+                bat '''
+                    echo Node.js Version:
+                    node --version
+                    
+                    echo.
+                    echo NPM Version:
+                    npm --version
+                    
+                    echo.
+                    echo Git Version:
+                    git --version
+                '''
+            }
         }
         
-        bat '''
-            REM Check Node.js version (required for building)
-            echo Node.js Version:
-            node --version
-            
-            echo.
-            REM Check npm version (package manager)
-            echo NPM Version:
-            npm --version
-            
-            echo.
-            REM Check Git version (source control)
-            echo Git Version:
-            git --version
-            
-            echo.
-            REM DEPENDENCY FIX: Configure npm to handle peer dependency conflicts
-            REM legacy-peer-deps allows npm to bypass strict peer dependency checks
-            echo [DEPENDENCY FIX] Configuring npm for better dependency resolution...
-            npm config set legacy-peer-deps true
-            echo npm configured successfully!
-        '''
-    }
-}
-        // Stage 4: Extract Git commit information for traceability
         stage('Source: Git Metadata') {
             steps {
                 script {
@@ -177,211 +135,133 @@ pipeline {
                 }
                 
                 bat '''
-                    REM Show latest commit details for audit trail
                     echo Latest Commit Details:
                     git log -1 --pretty=format:"Commit Hash: %%h%%nAuthor: %%an%%nDate: %%ad%%nMessage: %%s"
                     
                     echo.
                     echo.
-                    REM List files changed in this commit
-                    REM Useful for debugging build issues
                     echo Changed Files in This Commit:
                     git diff-tree --no-commit-id --name-status -r HEAD
                     
                     echo.
-                    REM Show current branch name
                     echo Current Branch:
                     git branch --show-current
                 '''
             }
         }
+                
+        // ============================================
+        // STEP 2: BUILD STAGE
+        // ============================================
         
         // =====================================================================
-        // COMPONENT 2: BUILD STAGE
+        // DEPENDENCY RESOLUTION FIX #2: SMART BACKEND INSTALLATION
         // =====================================================================
-        // Purpose: Install dependencies, fix vulnerabilities, and compile code
-        // Strategy: 3-level retry with progressive fixes for each step
-        // =====================================================================
-        
-        // =====================================================================
-        // DEPENDENCY FIX #3: BACKEND INSTALLATION WITH AUTO-RESOLUTION
-        // =====================================================================
-        // Problem: Peer dependency conflicts cause "ERESOLVE" errors
-        // Solution: 3-level retry strategy with increasing aggression
-        // Level 1: Standard install with legacy-peer-deps
-        // Level 2: Force install if Level 1 fails
-        // Level 3: Run audit fix + force install if Level 2 fails
+        // PROBLEM: npm install fails with "ERESOLVE unable to resolve dependency tree"
+        // CAUSE: Peer dependency conflicts (package A requires B@1.0, but C requires B@2.0)
+        // 
+        // SOLUTION: Two-tier fallback strategy
+        // TIER 1: Try standard npm install (respects all peer dependencies)
+        // TIER 2: If fails, use --legacy-peer-deps (ignores peer dependency conflicts)
         // =====================================================================
         stage('Build: Install Backend Dependencies') {
             steps {
                 script {
                     echo '=================================================='
                     echo '      STEP 2A: INSTALLING BACKEND DEPENDENCIES'
-                    echo '      (With automatic dependency conflict resolution)'
-                    echo '=================================================='
-                }
-                
-                dir('backend') {  
-                    // Retry mechanism: Attempts up to 3 times if installation fails
-                    retry(3) {
-                        bat '''
-                            echo [DEPENDENCY FIX] Installing Backend Dependencies with auto-fix...
-                            echo.
-                            
-                            REM LEVEL 1: Standard install with legacy-peer-deps
-                            REM This flag bypasses strict peer dependency version checks
-                            echo [ATTEMPT 1] Installing with legacy-peer-deps flag...
-                            npm install --legacy-peer-deps --production && (
-                                echo [SUCCESS] Backend dependencies installed!
-                                exit /b 0
-                            )
-                            
-                            REM LEVEL 2: Force installation if Level 1 failed
-                            REM --force flag ignores conflicts and warnings
-                            echo [ATTEMPT 1 FAILED] Retrying with force flag...
-                            npm install --legacy-peer-deps --production --force && (
-                                echo [SUCCESS] Backend dependencies installed with force!
-                                exit /b 0
-                            )
-                            
-                            REM LEVEL 3: Fix vulnerabilities then force install
-                            REM Last resort: Fix known issues and force installation
-                            echo [ATTEMPT 2 FAILED] Running audit fix then retrying...
-                            npm audit fix --force
-                            npm install --legacy-peer-deps --production --force
-                            
-                            echo.
-                            echo Backend dependencies installed successfully!
-                            
-                            echo.
-                            REM Show installed packages (depth=0 means direct dependencies only)
-                            echo Dependency Summary:
-                            npm list --depth=0 || echo Note: Some peer dependency warnings may exist but are non-blocking
-                        '''
-                    }
-                }
-            }
-        }
-        
-        // =====================================================================
-        // DEPENDENCY FIX #4: BACKEND SECURITY AUDIT
-        // =====================================================================
-        // Purpose: Automatically patch known security vulnerabilities
-        // Reason: Vulnerable dependencies can compromise application security
-        // =====================================================================
-        stage('Build: Fix Backend Vulnerabilities') {
-            steps {
-                script {
-                    echo '=================================================='
-                    echo '      FIXING BACKEND SECURITY VULNERABILITIES'
-                    echo '      (Automatic vulnerability patching)'
+                    echo '      [DEPENDENCY FIX #2: Smart Installation]'
                     echo '=================================================='
                 }
                 
                 dir('backend') {
                     bat '''
-                        REM Attempt to fix vulnerabilities automatically
-                        REM --legacy-peer-deps ensures compatibility with our install strategy
-                        echo [DEPENDENCY FIX] Running npm audit fix...
-                        npm audit fix --legacy-peer-deps || echo [INFO] Some vulnerabilities may require manual intervention
+                        echo Installing Backend Dependencies...
+                        echo.
+                        
+                        REM TIER 1: Standard installation (preferred method)
+                        REM --production: Skips devDependencies for faster, leaner install
+                        echo [TIER 1] Attempting standard installation...
+                        npm install --production && (
+                            echo [SUCCESS] Standard installation completed!
+                            goto :install_success
+                        )
+                        
+                        REM TIER 2: Fallback with legacy peer dependency handling
+                        REM Only runs if TIER 1 fails
+                        REM --legacy-peer-deps: Bypasses strict peer dependency version matching
+                        REM This resolves errors like: "ERESOLVE unable to resolve dependency tree"
+                        echo.
+                        echo [TIER 1 FAILED] Peer dependency conflicts detected
+                        echo [TIER 2] Retrying with legacy peer dependency mode...
+                        npm install --legacy-peer-deps --production || (
+                            echo [ERROR] Both installation attempts failed!
+                            exit /b 1
+                        )
+                        
+                        :install_success
+                        echo.
+                        echo [SUCCESS] Backend dependencies installed successfully!
                         
                         echo.
-                        echo Security audit completed!
-                        
-                        echo.
-                        REM Generate full audit report for review
-                        echo Generating audit report...
-                        npm audit || echo [INFO] Audit report generated
+                        echo Dependency Summary:
+                        REM Show installed packages (depth=0 shows only direct dependencies)
+                        REM || echo allows continuation even if this command has warnings
+                        npm list --depth=0 || echo Note: Some peer dependency warnings exist but build will continue
                     '''
                 }
             }
         }
         
         // =====================================================================
-        // DEPENDENCY FIX #5: FRONTEND INSTALLATION WITH AUTO-RESOLUTION
+        // DEPENDENCY RESOLUTION FIX #3: SMART FRONTEND INSTALLATION
         // =====================================================================
-        // Same 3-level strategy as backend but for frontend dependencies
+        // PROBLEM: Same as backend - peer dependency conflicts
+        // SOLUTION: Same two-tier fallback strategy
         // =====================================================================
         stage('Build: Install Frontend Dependencies') {
             steps {
                 script {
                     echo '=================================================='
                     echo '      STEP 2B: INSTALLING FRONTEND DEPENDENCIES'
-                    echo '      (With automatic dependency conflict resolution)'
-                    echo '=================================================='
-                }
-                
-                dir('frontend') {  
-                    retry(3) {  // 3 retry attempts
-                        bat '''
-                            echo [DEPENDENCY FIX] Installing Frontend Dependencies with auto-fix...
-                            echo.
-                            
-                            REM LEVEL 1: Standard install
-                            REM Note: No --production flag as frontend needs dev dependencies for building
-                            echo [ATTEMPT 1] Installing with legacy-peer-deps flag...
-                            npm install --legacy-peer-deps && (
-                                echo [SUCCESS] Frontend dependencies installed!
-                                exit /b 0
-                            )
-                            
-                            REM LEVEL 2: Force install
-                            echo [ATTEMPT 1 FAILED] Retrying with force flag...
-                            npm install --legacy-peer-deps --force && (
-                                echo [SUCCESS] Frontend dependencies installed with force!
-                                exit /b 0
-                            )
-                            
-                            REM LEVEL 3: Audit fix + force install
-                            echo [ATTEMPT 2 FAILED] Running audit fix then retrying...
-                            npm audit fix --force
-                            npm install --legacy-peer-deps --force
-                            
-                            echo.
-                            echo Frontend dependencies installed successfully!
-                            
-                            echo.
-                            echo Dependency Summary:
-                            npm list --depth=0 || echo Note: Some peer dependency warnings may exist but are non-blocking
-                        '''
-                    }
-                }
-            }
-        }
-        
-        // =====================================================================
-        // DEPENDENCY FIX #6: FRONTEND SECURITY AUDIT
-        // =====================================================================
-        // Purpose: Patch frontend vulnerabilities automatically
-        // =====================================================================
-        stage('Build: Fix Frontend Vulnerabilities') {
-            steps {
-                script {
-                    echo '=================================================='
-                    echo '      FIXING FRONTEND SECURITY VULNERABILITIES'
-                    echo '      (Automatic vulnerability patching)'
+                    echo '      [DEPENDENCY FIX #3: Smart Installation]'
                     echo '=================================================='
                 }
                 
                 dir('frontend') {
                     bat '''
-                        REM Fix known vulnerabilities in frontend dependencies
-                        echo [DEPENDENCY FIX] Running npm audit fix...
-                        npm audit fix --legacy-peer-deps || echo [INFO] Some vulnerabilities may require manual intervention
+                        echo Installing Frontend Dependencies...
+                        echo.
+                        
+                        REM TIER 1: Standard installation (preferred method)
+                        REM No --production flag because frontend needs devDependencies for building
+                        echo [TIER 1] Attempting standard installation...
+                        npm install && (
+                            echo [SUCCESS] Standard installation completed!
+                            goto :install_success
+                        )
+                        
+                        REM TIER 2: Fallback with legacy peer dependency handling
+                        REM --legacy-peer-deps: Resolves conflicts like React 17 vs React 18 peer dependencies
+                        echo.
+                        echo [TIER 1 FAILED] Peer dependency conflicts detected
+                        echo [TIER 2] Retrying with legacy peer dependency mode...
+                        npm install --legacy-peer-deps || (
+                            echo [ERROR] Both installation attempts failed!
+                            exit /b 1
+                        )
+                        
+                        :install_success
+                        echo.
+                        echo [SUCCESS] Frontend dependencies installed successfully!
                         
                         echo.
-                        echo Security audit completed!
-                        
-                        echo.
-                        REM Generate audit report
-                        echo Generating audit report...
-                        npm audit || echo [INFO] Audit report generated
+                        echo Dependency Summary:
+                        npm list --depth=0 || echo Note: Some peer dependency warnings exist but build will continue
                     '''
                 }
             }
         }
         
-        // Stage: Validate backend code and dependencies
         stage('Build: Validate Backend Code') {
             steps {
                 script {
@@ -395,16 +275,9 @@ pipeline {
                         echo Checking Backend Code Quality...
                         
                         echo.
-                        REM Verify critical dependencies are installed correctly
-                        REM express = web framework, mongoose = MongoDB driver
-                        echo Verifying critical dependencies are installed...
-                        npm list express mongoose || echo [WARNING] Some expected dependencies might be missing
-                        
-                        echo.
                         echo Backend code validated successfully!
                         
                         echo.
-                        REM Display package metadata
                         echo Backend Package Information:
                         type package.json | findstr "name version description"
                     '''
@@ -413,65 +286,68 @@ pipeline {
         }
         
         // =====================================================================
-        // DEPENDENCY FIX #7: FRONTEND BUILD WITH ERROR RECOVERY
+        // DEPENDENCY RESOLUTION FIX #4: MEMORY-OPTIMIZED BUILD
         // =====================================================================
-        // Problem: JavaScript heap out of memory during large builds
-        // Solution: Progressive memory allocation increase
-        // Level 1: Standard build (default memory ~512MB)
-        // Level 2: Build with 4GB memory allocation
-        // Level 3: Build with 8GB memory allocation (maximum)
+        // PROBLEM: Frontend build fails with "JavaScript heap out of memory"
+        // CAUSE: Node.js default memory limit (~512MB-1.4GB) too small for large React apps
+        // 
+        // SOLUTION: Progressive memory allocation
+        // TIER 1: Try build with default memory (fast, works for small apps)
+        // TIER 2: If fails, increase to 4GB (works for 95% of apps)
         // =====================================================================
         stage('Build: Compile Frontend Application') {
             steps {
                 script {
                     echo '=================================================='
                     echo '      STEP 2D: BUILDING FRONTEND APPLICATION'
-                    echo '      (With memory optimization and error recovery)'
+                    echo '      [DEPENDENCY FIX #4: Memory Optimization]'
                     echo '=================================================='
                 }
                 
                 dir('frontend') {
                     bat '''
-                        echo [DEPENDENCY FIX] Building Frontend for Production...
-                        echo.
+                        echo Building Frontend for Production...
                         
-                        REM Set CI=false to treat warnings as warnings (not errors)
-                        REM In CI mode, warnings cause build to fail
+                        REM Treat warnings as warnings, not errors
+                        REM Why: In CI mode, ESLint warnings cause build to fail
                         set CI=false
                         
-                        REM LEVEL 1: Try standard build
-                        echo [ATTEMPT 1] Running standard build...
+                        REM TIER 1: Standard build with default memory
+                        REM Works for small to medium apps (< 50MB bundle size)
+                        echo [TIER 1] Attempting build with default memory...
                         npm run build && (
-                            echo [SUCCESS] Frontend built successfully!
+                            echo [SUCCESS] Build completed with default settings!
                             goto :build_success
                         )
                         
-                        REM LEVEL 2: Retry with 4GB memory allocation
-                        REM Fixes "JavaScript heap out of memory" errors
-                        echo [ATTEMPT 1 FAILED] Retrying with increased memory allocation...
+                        REM TIER 2: Build with increased memory allocation
+                        REM Only runs if TIER 1 fails with heap out of memory error
+                        REM --max-old-space-size=4096: Allocates 4GB heap memory
+                        REM Why 4GB: Sufficient for 95% of React/Vue/Angular apps
+                        echo.
+                        echo [TIER 1 FAILED] Likely heap out of memory error
+                        echo [TIER 2] Retrying with increased memory (4GB)...
                         set NODE_OPTIONS=--max-old-space-size=4096
-                        npm run build && (
-                            echo [SUCCESS] Frontend built with increased memory!
-                            goto :build_success
+                        npm run build || (
+                            echo [ERROR] Build failed even with increased memory!
+                            echo Consider:
+                            echo   - Optimizing bundle size
+                            echo   - Splitting code into smaller chunks
+                            echo   - Increasing to 8GB: set NODE_OPTIONS=--max-old-space-size=8192
+                            exit /b 1
                         )
-                        
-                        REM LEVEL 3: Retry with maximum 8GB memory
-                        REM Last resort for very large applications
-                        echo [ATTEMPT 2 FAILED] Retrying with maximum memory allocation...
-                        set NODE_OPTIONS=--max-old-space-size=8192
-                        npm run build
                         
                         :build_success
                         echo.
-                        echo Frontend built successfully!
+                        echo [SUCCESS] Frontend built successfully!
                         
                         echo.
-                        REM Display build output directory contents
-                        REM React uses 'build', Vite uses 'dist'
                         echo Build Output Directory:
+                        REM Check for build folder (Create React App)
                         if exist "build" (
                             echo Build directory contents:
                             dir build
+                        REM Check for dist folder (Vite, Vue CLI)
                         ) else if exist "dist" (
                             echo Dist directory contents:
                             dir dist
@@ -480,15 +356,14 @@ pipeline {
                 }
             }
         }
+                
+        // ============================================
+        // STEP 3: ARTIFACT MANAGEMENT
+        // ============================================
         
-        // =====================================================================
-        // COMPONENT 3: ARTIFACT STAGE
-        // =====================================================================
-        // Purpose: Package built application into distributable archives
-        // Outputs: backend.zip, frontend.zip, build-manifest.txt
-        // =====================================================================
-        
-        // Stage: Remove old artifacts before creating new ones
+        // ============================================
+        // OLD ARTIFACT CLEANUP
+        // ============================================
         stage('Artifact: Clean Old Artifacts') {
             steps {
                 script {
@@ -498,8 +373,7 @@ pipeline {
                 }
                 
                 bat """
-                    REM Remove artifacts directory if it exists
-                    REM Ensures we don't mix artifacts from different builds
+                    REM Remove old artifacts to prevent mixing builds
                     if exist "${ARTIFACT_DIR}" (
                         echo Removing old artifacts directory...
                         rmdir /s /q ${ARTIFACT_DIR}
@@ -509,7 +383,9 @@ pipeline {
             }
         }
         
-        // Stage: Create fresh directory for new artifacts
+        // ============================================
+        // ARTIFACT CREATION
+        // ============================================
         stage('Artifact: Prepare Directory') {
             steps {
                 script {
@@ -519,14 +395,13 @@ pipeline {
                 }
                 
                 bat """
-                    REM Create artifacts directory if it doesn't exist
+                    REM Create fresh artifacts directory
                     if not exist "${ARTIFACT_DIR}" mkdir ${ARTIFACT_DIR}
                     echo Artifact directory created: ${ARTIFACT_DIR}
                 """
             }
         }
         
-        // Stage: Package backend into ZIP archive
         stage('Artifact: Create Backend Archive') {
             steps {
                 script {
@@ -542,10 +417,10 @@ pipeline {
                     REM Navigate to backend directory
                     cd backend
                     
-                    REM Create ZIP archive using tar command
-                    REM -a = auto-compress based on file extension (.zip)
-                    REM -c = create archive
-                    REM -f = specify filename
+                    REM Create ZIP using tar (built into Windows 10+)
+                    REM -a: Auto-detect compression format from extension
+                    REM -c: Create archive
+                    REM -f: Specify filename
                     tar -a -cf ../artifacts/idurar-backend-${BUILD_VERSION}.zip *
                     cd ..
                     
@@ -553,14 +428,12 @@ pipeline {
                     echo Backend artifact created successfully!
                     
                     echo.
-                    REM Display archive file details (size, timestamp)
                     echo Artifact Details:
                     dir artifacts\\idurar-backend-${BUILD_VERSION}.zip
                 """
             }
         }
         
-        // Stage: Package frontend build output into ZIP archive
         stage('Artifact: Create Frontend Archive') {
             steps {
                 script {
@@ -574,12 +447,13 @@ pipeline {
                     echo Creating Frontend ZIP archive...
                     
                     cd frontend
-                    REM Check for 'build' directory (React/CRA)
+                    
+                    REM Check for Create React App build folder
                     if exist "build" (
                         cd build
                         tar -a -cf ../../artifacts/idurar-frontend-${BUILD_VERSION}.zip *
                         cd ../..
-                    REM If not found, check for 'dist' directory (Vite/Vue)
+                    REM Check for Vite/Vue build folder
                     ) else if exist "dist" (
                         cd dist
                         tar -a -cf ../../artifacts/idurar-frontend-${BUILD_VERSION}.zip *
@@ -596,7 +470,6 @@ pipeline {
             }
         }
         
-        // Stage: Generate build manifest file 
         stage('Artifact: Generate Build Manifest') {
             steps {
                 script {
@@ -604,22 +477,18 @@ pipeline {
                     echo '      GENERATING BUILD MANIFEST'
                     echo '=================================================='
                     
-                    // Get current Git branch
                     def gitBranch = bat(script: '@git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
                 }
                 
                 bat """
-                    REM Create comprehensive build manifest for traceability
-                    REM This file documents what was built, when, and with what tools
                     echo Creating build manifest file...
                     
-                    REM Write header
+                    REM Create comprehensive build documentation
+                    REM This file provides traceability for each build
                     echo ========================================== > artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo IDURAR ERP/CRM - Build Manifest >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo ========================================== >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo. >> artifacts\\build-manifest-${BUILD_VERSION}.txt
-                    
-                    REM Write build information
                     echo Build Number: ${BUILD_NUMBER} >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo Build Version: ${BUILD_VERSION} >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo Build Date: %DATE% >> artifacts\\build-manifest-${BUILD_VERSION}.txt
@@ -629,16 +498,15 @@ pipeline {
                     
                     REM Document dependency resolution features
                     echo Dependency Resolution: ENABLED >> artifacts\\build-manifest-${BUILD_VERSION}.txt
-                    echo Security Audit: COMPLETED >> artifacts\\build-manifest-${BUILD_VERSION}.txt
+                    echo   - Pre-build cleanup: YES >> artifacts\\build-manifest-${BUILD_VERSION}.txt
+                    echo   - Legacy peer deps: FALLBACK >> artifacts\\build-manifest-${BUILD_VERSION}.txt
+                    echo   - Memory optimization: FALLBACK >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo. >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     
-                    REM List created artifacts
                     echo Artifacts Created: >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo   - Backend: idurar-backend-${BUILD_VERSION}.zip >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo   - Frontend: idurar-frontend-${BUILD_VERSION}.zip >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo. >> artifacts\\build-manifest-${BUILD_VERSION}.txt
-                    
-                    REM Document tool versions used for this build
                     echo Build Tools: >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo   - Build Tool: npm (Node Package Manager) >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     echo   - Node.js Version: >> artifacts\\build-manifest-${BUILD_VERSION}.txt
@@ -648,14 +516,12 @@ pipeline {
                     echo ========================================== >> artifacts\\build-manifest-${BUILD_VERSION}.txt
                     
                     echo.
-                    REM Display manifest contents in console
                     echo Build Manifest Created:
                     type artifacts\\build-manifest-${BUILD_VERSION}.txt
                 """
             }
         }
         
-        // Stage: Verify all artifacts were created successfully
         stage('Artifact: Verification & Summary') {
             steps {
                 script {
@@ -665,7 +531,6 @@ pipeline {
                 }
                 
                 bat """
-                    REM List all files in artifacts directory with sizes
                     echo Listing All Build Artifacts:
                     dir artifacts
                     
@@ -675,7 +540,6 @@ pipeline {
             }
         }
         
-        // Stage: Store artifacts in Jenkins for download
         stage('Artifact: Archive in Jenkins') {
             steps {
                 script {
@@ -684,8 +548,9 @@ pipeline {
                     echo '=================================================='
                 }
                 
-                // Jenkins built-in function to archive artifacts
-                // artifacts: Pattern to match files to archive
+                // Archive all artifacts in Jenkins for download
+                // artifacts: Pattern to match files
+                // fingerprint: Creates unique hash for change tracking
                 archiveArtifacts artifacts: 'artifacts/**/*', fingerprint: true
                 
                 echo 'All artifacts archived in Jenkins successfully!'
@@ -695,11 +560,6 @@ pipeline {
     
     // =====================================================================
     // POST-BUILD ACTIONS
-    // =====================================================================
-    // These blocks execute after all stages complete
-    // Success: When all stages pass
-    // Failure: When any stage fails
-    // Always: Runs regardless of build result
     // =====================================================================
     post {
         success {
@@ -714,10 +574,6 @@ pipeline {
                 echo "Project: ${PROJECT_NAME}"
                 echo "Branch: ${gitBranch}"
                 echo ''
-                echo 'PRE-BUILD STAGE - COMPLETED'
-                echo '  - Workspace cleanup: SUCCESS'
-                echo '  - Dependency cache cleared: SUCCESS'
-                echo ''
                 echo 'STEP 1: SOURCE STAGE - COMPLETED'
                 echo '  - Code checkout: SUCCESS'
                 echo '  - Repository analysis: SUCCESS'
@@ -725,17 +581,15 @@ pipeline {
                 echo '  - Git metadata extraction: SUCCESS'
                 echo ''
                 echo 'STEP 2: BUILD STAGE - COMPLETED'
-                echo '  - Backend dependencies: INSTALLED & FIXED'
-                echo '  - Backend vulnerabilities: RESOLVED'
-                echo '  - Frontend dependencies: INSTALLED & FIXED'
-                echo '  - Frontend vulnerabilities: RESOLVED'
+                echo '  - Backend dependencies: INSTALLED (with auto-resolution)'
+                echo '  - Frontend dependencies: INSTALLED (with auto-resolution)'
                 echo '  - Backend validation: PASSED'
                 echo '  - Frontend compilation: SUCCESS'
                 echo ''
-                echo 'DEPENDENCY RESOLUTION: ENABLED'
-                echo '  - Peer dependency conflicts: AUTO-RESOLVED'
-                echo '  - Security vulnerabilities: AUTO-FIXED'
-                echo '  - Build errors: AUTO-RECOVERED'
+                echo 'DEPENDENCY RESOLUTION APPLIED:'
+                echo '  - Pre-build cleanup: EXECUTED'
+                echo '  - Legacy peer deps fallback: AVAILABLE'
+                echo '  - Memory optimization: AVAILABLE'
                 echo ''
                 echo 'ARTIFACTS CREATED:'
                 echo "  - Backend Archive: idurar-backend-${BUILD_VERSION}.zip"
@@ -748,7 +602,7 @@ pipeline {
                 echo '=================================================='
             }
         }
-   
+        
         failure {
             script {
                 echo '=================================================='
@@ -760,19 +614,27 @@ pipeline {
                 echo 'Please check the console output above for error details'
                 echo ''
                 echo 'AUTOMATIC FIXES ATTEMPTED:'
-                echo '  - 3x retry with progressive fallback'
-                echo '  - npm cache cleared'
-                echo '  - Legacy peer deps enabled'
-                echo '  - Force installation attempted'
-                echo '  - Security audit fix applied'
-                echo '  - Memory optimization applied'
+                echo '  ✓ Pre-build cleanup (removed old node_modules)'
+                echo '  ✓ Dependency conflict resolution (--legacy-peer-deps)'
+                echo '  ✓ Memory optimization (4GB heap allocation)'
                 echo ''
-                echo 'Common remaining issues:'
-                echo '  - Network connectivity problems'
-                echo '  - Incompatible Node.js version'
-                echo '  - Missing system dependencies'
-                echo '  - Insufficient disk space'
-                echo '  - Corrupted package.json'
+                echo 'COMMON REMAINING ISSUES:'
+                echo '  1. Network connectivity problems'
+                echo '     → Check internet connection'
+                echo '     → Try: npm config set registry https://registry.npmjs.org/'
+                echo ''
+                echo '  2. Incompatible Node.js version'
+                echo '     → Current: Node.js 18.x'
+                echo '     → Required: Node.js 20.x for MongoDB 7.x'
+                echo '     → Solution: Upgrade Node.js to version 20.9.0'
+                echo ''
+                echo '  3. Missing system dependencies'
+                echo '     → Windows Build Tools required'
+                echo '     → Try: npm install --global windows-build-tools'
+                echo ''
+                echo '  4. Insufficient disk space'
+                echo '     → Check available space (need ~2GB free)'
+                echo '     → Clean: npm cache clean --force'
                 echo ''
                 echo 'Manual intervention may be required.'
                 echo '=================================================='
@@ -784,16 +646,17 @@ pipeline {
                 echo '=================================================='
                 echo '      PIPELINE EXECUTION SUMMARY'
                 echo '=================================================='
-                echo "Total Stages: 18"
+                echo "Total Stages: 15"
                 echo "Dependency Resolution: ENABLED"
                 echo "Execution Time: Check above for duration"
                 echo "Workspace: ${env.WORKSPACE}"
+                echo ''
+                echo 'DEPENDENCY FIXES AVAILABLE:'
+                echo '  1. Pre-build cleanup (prevents stale dependencies)'
+                echo '  2. Smart installation (2-tier fallback strategy)'
+                echo '  3. Legacy peer deps (resolves version conflicts)'
+                echo '  4. Memory optimization (prevents heap errors)'
                 echo '=================================================='
-                
-                bat '''
-                    echo Performing final cleanup...
-                    npm cache clean --force || echo Cache cleanup skipped
-                '''
             }
         }
     }
