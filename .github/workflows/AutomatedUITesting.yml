@@ -1,185 +1,85 @@
-name: Cypress E2E Tests
+name: Cypress E2E Tests (Simple)
 
 on:
   push:
-    branches:
-      - master
-      - main
-      - dev
+    branches: [master, main, dev]
   pull_request:
-    branches:
-      - master
-      - main
-      - dev
+    branches: [master, main, dev]
 
 jobs:
   cypress-tests:
     runs-on: ubuntu-latest
-    
-    strategy:
-      matrix:
-        node-version: [20.x]
-    
+    timeout-minutes: 20
+
     services:
       mongodb:
         image: mongo:6.0
         ports:
           - 27017:27017
-        options: >-
-          --health-cmd "mongosh --eval 'db.runCommand({ ping: 1 })'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: '20.x'
           cache: 'npm'
 
+      # Backend Setup
       - name: Install Backend Dependencies
-        working-directory: ./backend
-        run: npm ci
+        run: cd backend && npm ci
 
+      - name: Configure Backend Environment
+        run: |
+          cd backend
+          echo "DATABASE=mongodb://localhost:27017/idurar" > .env
+          echo "JWT_SECRET=test-jwt-secret-key" >> .env
+          echo "NODE_ENV=development" >> .env
+
+      - name: Run Backend Setup
+        run: cd backend && npm run setup
+
+      - name: Start Backend (Dev Mode)
+        run: |
+          cd backend
+          npm run dev &
+          echo "Waiting for backend..."
+          sleep 15
+
+      # Frontend Setup  
       - name: Install Frontend Dependencies
-        working-directory: ./frontend
-        run: npm ci
+        run: cd frontend && npm ci
 
-      - name: Setup Environment Variables
-        working-directory: ./backend
+      - name: Start Frontend (Dev Mode)
         run: |
-          echo "DATABASE=mongodb://localhost:27017/idurar" >> .variables.env
-          echo "JWT_SECRET=test-secret-key-for-ci" >> .variables.env
-          echo "NODE_ENV=test" >> .variables.env
+          cd frontend
+          NODE_OPTIONS=--openssl-legacy-provider npm run dev &
+          echo "Waiting for frontend..."
+          sleep 30
 
-      - name: Run Backend Setup Script
-        working-directory: ./backend
-        run: npm run setup
-
-      - name: Start Backend Server in Background
-        working-directory: ./backend
-        run: |
-          nohup npm start > backend.log 2>&1 &
-          echo $! > backend.pid
-          sleep 5
-        env:
-          NODE_ENV: test
-
-      - name: Wait for Backend to be Ready
-        run: |
-          echo "Waiting for backend to start..."
-          for i in {1..30}; do
-            if curl -f http://localhost:8888/api/hello 2>/dev/null; then
-              echo "Backend is ready!"
-              break
-            fi
-            echo "Attempt $i: Backend not ready yet..."
-            sleep 2
-          done
-
-      - name: Start Frontend Server in Background
-        working-directory: ./frontend
-        run: |
-          export NODE_OPTIONS=--openssl-legacy-provider
-          nohup npm start > frontend.log 2>&1 &
-          echo $! > frontend.pid
-          sleep 10
-
-      - name: Wait for Frontend to be Ready
-        run: |
-          echo "Waiting for frontend to start..."
-          for i in {1..60}; do
-            if curl -f http://localhost:3000 2>/dev/null; then
-              echo "Frontend is ready!"
-              break
-            fi
-            echo "Attempt $i: Frontend not ready yet..."
-            sleep 2
-          done
-
-      - name: Show Backend Logs (if failed)
-        if: failure()
-        run: |
-          echo "=== Backend Logs ==="
-          cat backend/backend.log || echo "No backend log found"
-
-      - name: Show Frontend Logs (if failed)
-        if: failure()
-        run: |
-          echo "=== Frontend Logs ==="
-          cat frontend/frontend.log || echo "No frontend log found"
-
-      - name: Run Cypress E2E Tests
+      # Run Cypress
+      - name: Cypress Tests
         uses: cypress-io/github-action@v6
         with:
-          working-directory: ./frontend
+          working-directory: frontend
           browser: chrome
-          wait-on: 'http://localhost:3000, http://localhost:8888/api/hello'
+          wait-on: 'http://localhost:3000'
           wait-on-timeout: 120
-          config-file: cypress.config.js
+          install: false
         env:
           CYPRESS_baseUrl: http://localhost:3000
-          NODE_OPTIONS: --openssl-legacy-provider
 
-      - name: Upload Cypress Screenshots
+      # Upload Results
+      - name: Upload Screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: cypress-screenshots
+          name: screenshots
           path: frontend/cypress/screenshots
-          if-no-files-found: ignore
 
-      - name: Upload Cypress Videos
+      - name: Upload Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cypress-videos
+          name: videos
           path: frontend/cypress/videos
-          if-no-files-found: ignore
-
-      - name: Upload Cypress Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cypress-results
-          path: |
-            frontend/cypress/results
-            frontend/cypress/reports
-          if-no-files-found: ignore
-
-      - name: Upload Server Logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: server-logs
-          path: |
-            backend/backend.log
-            frontend/frontend.log
-          if-no-files-found: ignore
-
-      - name: Stop Servers
-        if: always()
-        run: |
-          if [ -f backend/backend.pid ]; then
-            kill $(cat backend/backend.pid) 2>/dev/null || true
-          fi
-          if [ -f frontend/frontend.pid ]; then
-            kill $(cat frontend/frontend.pid) 2>/dev/null || true
-          fi
-          # Kill any remaining node processes
-          pkill -f "node.*backend" || true
-          pkill -f "node.*frontend" || true
-
-      - name: Test Summary
-        if: always()
-        run: |
-          echo "### Cypress Test Results 🧪" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Node Version:** ${{ matrix.node-version }}" >> $GITHUB_STEP_SUMMARY
