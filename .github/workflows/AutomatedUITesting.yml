@@ -1,22 +1,18 @@
-name: Cypress E2E Tests (Simple)
-
+name: Cypress E2E Tests 
 on:
   push:
     branches: [master, main, dev]
   pull_request:
     branches: [master, main, dev]
-
 jobs:
   cypress-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     services:
       mongodb:
         image: mongo:6.0
         ports:
           - 27017:27017
-
     steps:
       - uses: actions/checkout@v4
       
@@ -24,39 +20,32 @@ jobs:
         with:
           node-version: '20.x'
           cache: 'npm'
-
       # Backend Setup
       - name: Install Backend Dependencies
         run: cd backend && npm ci
-
       - name: Configure Backend Environment
         run: |
           cd backend
           echo "DATABASE=mongodb://localhost:27017/idurar" > .env
           echo "JWT_SECRET=test-jwt-secret-key" >> .env
           echo "NODE_ENV=development" >> .env
-
       - name: Run Backend Setup
         run: cd backend && npm run setup
-
       - name: Start Backend (Dev Mode)
         run: |
           cd backend
           npm run dev &
           echo "Waiting for backend..."
           sleep 15
-
       # Frontend Setup  
       - name: Install Frontend Dependencies
         run: cd frontend && npm ci
-
       - name: Start Frontend (Dev Mode)
         run: |
           cd frontend
           NODE_OPTIONS=--openssl-legacy-provider npm run dev &
           echo "Waiting for frontend..."
           sleep 30
-
       # Run Cypress
       - name: Cypress Tests
         uses: cypress-io/github-action@v6
@@ -68,18 +57,21 @@ jobs:
           install: false
         env:
           CYPRESS_baseUrl: http://localhost:3000
-
-      # Upload Results
+      # Upload Test Results and Screenshots
       - name: Upload Screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: screenshots
           path: frontend/cypress/screenshots
-
-      - name: Upload Videos
+          if-no-files-found: ignore
+      
+      - name: Upload Test Results Summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: videos
-          path: frontend/cypress/videos
+          name: test-results
+          path: |
+            frontend/cypress/results/**/*
+            frontend/cypress/reports/**/*
+          if-no-files-found: ignore
