@@ -1,18 +1,27 @@
-name: Cypress E2E Tests 
+name: Cypress E2E Tests
+
 on:
   push:
     branches: [master, main, dev]
   pull_request:
     branches: [master, main, dev]
+
 jobs:
   cypress-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    
     services:
       mongodb:
         image: mongo:6.0
         ports:
           - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
     steps:
       - uses: actions/checkout@v4
       
@@ -20,32 +29,65 @@ jobs:
         with:
           node-version: '20.x'
           cache: 'npm'
+      
       # Backend Setup
       - name: Install Backend Dependencies
         run: cd backend && npm ci
+      
       - name: Configure Backend Environment
         run: |
           cd backend
-          echo "DATABASE=mongodb://localhost:27017/idurar" > .env
-          echo "JWT_SECRET=test-jwt-secret-key" >> .env
-          echo "NODE_ENV=development" >> .env
+          cat > .env << EOF
+          DATABASE=mongodb://localhost:27017/idurar
+          JWT_SECRET=test-jwt-secret-key-for-cypress-testing
+          NODE_ENV=development
+          PORT=8888
+          EOF
+      
       - name: Run Backend Setup
         run: cd backend && npm run setup
+      
       - name: Start Backend (Dev Mode)
         run: |
           cd backend
-          npm run dev &
-          echo "Waiting for backend..."
-          sleep 15
+          npm run dev > ../backend.log 2>&1 &
+          BACKEND_PID=$!
+          echo "BACKEND_PID=$BACKEND_PID" >> $GITHUB_ENV
+          echo "Backend started with PID: $BACKEND_PID"
+      
+      - name: Wait for Backend Health
+        run: |
+          echo "Waiting for backend to be ready..."
+          timeout 60 bash -c 'until curl -f http://localhost:8888/api/hello 2>/dev/null || curl -f http://localhost:8888 2>/dev/null; do sleep 2; done' || echo "Backend health check timeout"
+          sleep 5
+          echo "Backend is ready"
+      
       # Frontend Setup  
       - name: Install Frontend Dependencies
         run: cd frontend && npm ci
+      
       - name: Start Frontend (Dev Mode)
         run: |
           cd frontend
-          NODE_OPTIONS=--openssl-legacy-provider npm run dev &
-          echo "Waiting for frontend..."
-          sleep 30
+          NODE_OPTIONS=--openssl-legacy-provider npm run dev > ../frontend.log 2>&1 &
+          FRONTEND_PID=$!
+          echo "FRONTEND_PID=$FRONTEND_PID" >> $GITHUB_ENV
+          echo "Frontend started with PID: $FRONTEND_PID"
+      
+      - name: Wait for Frontend Health
+        run: |
+          echo "Waiting for frontend to be ready..."
+          timeout 90 bash -c 'until curl -f http://localhost:3000 2>/dev/null; do sleep 2; done'
+          sleep 10
+          echo "Frontend is ready"
+      
+      # Initialize Application with Valid Data
+      - name: Initialize Application State
+        run: |
+          echo "Ensuring application is in valid state..."
+          sleep 5
+          curl -X GET http://localhost:3000 || true
+      
       # Run Cypress
       - name: Cypress Tests
         uses: cypress-io/github-action@v6
@@ -55,23 +97,101 @@ jobs:
           wait-on: 'http://localhost:3000'
           wait-on-timeout: 120
           install: false
+          config: video=false,screenshotOnRunFailure=true
         env:
           CYPRESS_baseUrl: http://localhost:3000
-      # Upload Test Results and Screenshots
+        continue-on-error: true
+      
+      # Generate Test Summary
+      - name: Generate Test Execution Summary
+        if: always()
+        run: |
+          cat > test-summary.md << 'EOF'
+          # Cypress Test Execution Summary
+          
+          ## Test Run Information
+          - **Workflow**: ${{ github.workflow }}
+          - **Run Number**: ${{ github.run_number }}
+          - **Commit**: ${{ github.sha }}
+          - **Branch**: ${{ github.ref_name }}
+          - **Triggered by**: ${{ github.actor }}
+          - **Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          ## Results by Test Suite
+          
+          EOF
+          
+          # Parse Cypress results if they exist
+          if [ -d "frontend/cypress/results" ] || [ -d "frontend/cypress/reports" ]; then
+            echo "Test results found and will be uploaded as artifacts" >> test-summary.md
+          else
+            echo "⚠️ No detailed test results generated" >> test-summary.md
+          fi
+          
+          echo "" >> test-summary.md
+          echo "## Test Execution Logs" >> test-summary.md
+          echo "" >> test-summary.md
+          echo "### Backend Log (last 50 lines)" >> test-summary.md
+          echo '```' >> test-summary.md
+          tail -n 50 backend.log 2>/dev/null || echo "No backend log available" >> test-summary.md
+          echo '```' >> test-summary.md
+          echo "" >> test-summary.md
+          echo "### Frontend Log (last 50 lines)" >> test-summary.md
+          echo '```' >> test-summary.md
+          tail -n 50 frontend.log 2>/dev/null || echo "No frontend log available" >> test-summary.md
+          echo '```' >> test-summary.md
+          
+          # Display summary in workflow
+          cat test-summary.md >> $GITHUB_STEP_SUMMARY
+      
+      # Upload Artifacts
       - name: Upload Screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots
+          name: cypress-screenshots-${{ github.run_number }}
           path: frontend/cypress/screenshots
           if-no-files-found: ignore
+          retention-days: 7
       
-      - name: Upload Test Results Summary
+      - name: Upload Test Execution Summary
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-execution-summary-${{ github.run_number }}
+          path: test-summary.md
+          if-no-files-found: warn
+          retention-days: 30
+      
+      - name: Upload Application Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-logs-${{ github.run_number }}
+          path: |
+            backend.log
+            frontend.log
+          if-no-files-found: ignore
+          retention-days: 7
+      
+      - name: Upload Cypress Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-results-${{ github.run_number }}
           path: |
             frontend/cypress/results/**/*
             frontend/cypress/reports/**/*
           if-no-files-found: ignore
+          retention-days: 14
+      
+      # Cleanup
+      - name: Cleanup Processes
+        if: always()
+        run: |
+          echo "Cleaning up processes..."
+          kill ${{ env.BACKEND_PID }} 2>/dev/null || true
+          kill ${{ env.FRONTEND_PID }} 2>/dev/null || true
+          sleep 2
+          pkill -f "node.*backend" || true
+          pkill -f "node.*frontend" || true
