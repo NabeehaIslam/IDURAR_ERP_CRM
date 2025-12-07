@@ -2,12 +2,12 @@ module.exports = {
   // Test environment
   testEnvironment: 'node',
 
-  // Setup files
-  // setupFilesAfterEnv: ['<rootDir>/tests/setup/setupTests.js'], // Temporarily disabled for CI/CD
+  // Setup files - Temporarily disabled for CI/CD troubleshooting
+  // setupFilesAfterEnv: ['<rootDir>/tests/setup/setupTests.js'],
 
-  // Global setup and teardown
-  globalSetup: '<rootDir>/tests/setup/globalSetup.js',
-  globalTeardown: '<rootDir>/tests/setup/globalTeardown.js',
+  // Global setup and teardown - Temporarily disabled for CI/CD troubleshooting
+  // globalSetup: '<rootDir>/tests/setup/globalSetup.js',
+  // globalTeardown: '<rootDir>/tests/setup/globalTeardown.js',
 
   // Coverage configuration
   collectCoverageFrom: [
