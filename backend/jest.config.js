@@ -3,7 +3,7 @@ module.exports = {
   testEnvironment: 'node',
 
   // Setup files
-  setupFilesAfterEnv: ['<rootDir>/tests/setup/setupTests.js'],
+  // setupFilesAfterEnv: ['<rootDir>/tests/setup/setupTests.js'], // Temporarily disabled for CI/CD
 
   // Global setup and teardown
   globalSetup: '<rootDir>/tests/setup/globalSetup.js',
