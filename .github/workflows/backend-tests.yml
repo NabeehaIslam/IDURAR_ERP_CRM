@@ -36,6 +36,14 @@ jobs:
       working-directory: ./backend
       run: npm ci
     
+    - name: Verify test setup files
+      working-directory: ./backend
+      run: |
+        echo "Checking for test setup files..."
+        ls -la tests/setup/
+        echo "Jest config:"
+        cat jest.config.js
+    
     - name: Run unit tests
       working-directory: ./backend
       run: npx jest tests/unit/utils tests/unit/helpers tests/unit/middlewares/inventory tests/unit/middlewares/upload tests/unit/settings/useMoney --coverage --coverageDirectory=coverage/unit
