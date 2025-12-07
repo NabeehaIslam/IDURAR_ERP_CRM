@@ -2,7 +2,7 @@ name: Backend Tests
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [ master, develop, Arsal-Temuri-Part ]
     paths:
       - 'backend/**'
       - '.github/workflows/backend-tests.yml'
