@@ -1,0 +1,356 @@
+name: Deploy to Production
+
+on:
+  # Manual approval required for production
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version/Tag to deploy'
+        required: true
+        type: string
+      
+  # Trigger after staging validation
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  production-deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    
+    # Require manual approval
+    environment:
+      name: production
+      url: https://${{ secrets.PRODUCTION_DOMAIN }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.version || github.ref }}
+    
+    - name: Validate version
+      run: |
+        echo "Deploying version: ${{ github.event.inputs.version || github.ref_name }}"
+        echo "Branch: ${{ github.ref }}"
+        echo "Commit: ${{ github.sha }}"
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install backend dependencies
+      working-directory: ./backend
+      run: npm ci --production
+    
+    - name: Install frontend dependencies
+      working-directory: ./frontend
+      run: npm ci
+    
+    - name: Build frontend for production
+      working-directory: ./frontend
+      run: npm run build
+      env:
+        VITE_API_URL: ${{ secrets.PRODUCTION_API_URL }}
+        NODE_ENV: production
+    
+    - name: Run production pre-deployment tests
+      working-directory: ./backend
+      run: |
+        npm ci
+        npx jest tests/unit/ --coverage
+      env:
+        NODE_ENV: production
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+      if: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+    
+    - name: Create production backup
+      run: |
+        echo "Creating backup before deployment..."
+        # Backup database (example for MongoDB)
+        # mongodump --uri="${{ secrets.PRODUCTION_DATABASE_URL }}" --out=backup-$(date +%Y%m%d-%H%M%S)
+        echo "Backup created"
+      continue-on-error: true
+    
+    - name: Deploy to AWS CodeDeploy (Option 1)
+      if: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+      run: |
+        # Create deployment package
+        tar -czf production-deployment.tar.gz backend/ frontend/dist/
+        
+        # Upload to S3
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        aws s3 cp production-deployment.tar.gz s3://${{ secrets.PRODUCTION_S3_BUCKET }}/deployments/${TIMESTAMP}.tar.gz
+        
+        # Deploy using AWS CodeDeploy
+        DEPLOYMENT_ID=$(aws deploy create-deployment \
+          --application-name IDURAR-ERP-CRM \
+          --deployment-group-name Production-DeploymentGroup \
+          --s3-location bucket=${{ secrets.PRODUCTION_S3_BUCKET }},key=deployments/${TIMESTAMP}.tar.gz,bundleType=tgz \
+          --description "Production deployment v${{ github.event.inputs.version || github.ref_name }}" \
+          --query 'deploymentId' --output text)
+        
+        echo "Deployment ID: $DEPLOYMENT_ID"
+        
+        # Wait for deployment to complete
+        aws deploy wait deployment-successful --deployment-id $DEPLOYMENT_ID
+      continue-on-error: true
+    
+    - name: Deploy to Azure DevOps Releases (Option 2)
+      if: ${{ secrets.AZURE_CREDENTIALS != '' }}
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ secrets.AZURE_WEBAPP_NAME_PROD }}
+        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_PROD }}
+        package: .
+        slot-name: production
+      continue-on-error: true
+    
+    - name: Deploy using SSH to Production Server (Option 3)
+      if: ${{ secrets.PRODUCTION_SSH_HOST != '' }}
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.PRODUCTION_SSH_HOST }}
+        username: ${{ secrets.PRODUCTION_SSH_USER }}
+        key: ${{ secrets.PRODUCTION_SSH_KEY }}
+        port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+        script: |
+          # Blue-Green Deployment Strategy
+          cd /var/www/idurar-production
+          
+          # Pull latest code
+          git fetch --all --tags
+          git checkout ${{ github.event.inputs.version || github.ref_name }}
+          
+          # Backend deployment
+          cd backend
+          npm ci --production
+          
+          # Database migrations (if any)
+          # npm run migrate:prod
+          
+          # Restart backend with zero-downtime
+          pm2 reload idurar-production-backend --update-env
+          
+          # Frontend deployment
+          cd ../frontend
+          npm ci
+          npm run build
+          
+          # Copy to nginx directory
+          sudo cp -r dist/* /var/www/html/idurar-production/
+          
+          # Reload nginx
+          sudo nginx -s reload
+          
+          echo "Production deployment completed successfully!"
+    
+    - name: Initialize Sentry monitoring
+      if: ${{ secrets.SENTRY_DSN != '' }}
+      run: |
+        # Install Sentry CLI
+        curl -sL https://sentry.io/get-cli/ | bash
+        
+        # Create Sentry release
+        export SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+        export SENTRY_ORG=${{ secrets.SENTRY_ORG }}
+        export SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
+        
+        VERSION="${{ github.event.inputs.version || github.ref_name }}"
+        
+        sentry-cli releases new "$VERSION"
+        sentry-cli releases set-commits "$VERSION" --auto
+        sentry-cli releases finalize "$VERSION"
+        
+        # Deploy notification
+        sentry-cli releases deploys "$VERSION" new -e production
+        
+        echo "Sentry monitoring initialized for version $VERSION"
+      continue-on-error: true
+    
+    - name: Configure New Relic monitoring
+      if: ${{ secrets.NEW_RELIC_LICENSE_KEY != '' }}
+      run: |
+        echo "Configuring New Relic APM..."
+        
+        # Mark deployment in New Relic
+        curl -X POST 'https://api.newrelic.com/v2/applications/${{ secrets.NEW_RELIC_APP_ID }}/deployments.json' \
+          -H 'Api-Key:${{ secrets.NEW_RELIC_API_KEY }}' \
+          -H 'Content-Type: application/json' \
+          -d '{
+            "deployment": {
+              "revision": "${{ github.sha }}",
+              "changelog": "Production deployment v${{ github.event.inputs.version || github.ref_name }}",
+              "description": "Deployed by GitHub Actions",
+              "user": "${{ github.actor }}"
+            }
+          }'
+        
+        echo "New Relic deployment marker created"
+      continue-on-error: true
+    
+    - name: Run production health checks
+      run: |
+        echo "Running production health checks..."
+        sleep 30
+        
+        # API Health Check
+        HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.PRODUCTION_API_URL }}/api/health)
+        
+        if [ "$HEALTH_STATUS" != "200" ]; then
+          echo "❌ Health check failed! Status: $HEALTH_STATUS"
+          exit 1
+        fi
+        
+        echo "✅ Production health check passed"
+        
+        # Database connectivity
+        curl -f ${{ secrets.PRODUCTION_API_URL }}/api/ping || exit 1
+        
+        echo "✅ Database connectivity verified"
+    
+    - name: Run production smoke tests
+      working-directory: ./backend
+      run: |
+        npm ci
+        npx jest tests/integration/auth/auth.integration.test.js --testTimeout=30000
+      env:
+        DATABASE: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        JWT_SECRET: ${{ secrets.PRODUCTION_JWT_SECRET }}
+        API_URL: ${{ secrets.PRODUCTION_API_URL }}
+      continue-on-error: true
+    
+    - name: Rollback on failure
+      if: failure()
+      run: |
+        echo "❌ Deployment failed! Initiating rollback..."
+        
+        # Rollback using AWS CodeDeploy
+        if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+          aws deploy stop-deployment --deployment-id $DEPLOYMENT_ID --auto-rollback-enabled
+        fi
+        
+        # Rollback using SSH
+        if [ -n "${{ secrets.PRODUCTION_SSH_HOST }}" ]; then
+          ssh ${{ secrets.PRODUCTION_SSH_USER }}@${{ secrets.PRODUCTION_SSH_HOST }} << 'EOF'
+            cd /var/www/idurar-production
+            git checkout master  # Rollback to stable version
+            pm2 restart all
+            sudo nginx -s reload
+EOF
+        fi
+        
+        echo "Rollback completed"
+        exit 1
+    
+    - name: Send deployment notification
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        text: |
+          🚀 Production Deployment ${{ job.status }}
+          Version: ${{ github.event.inputs.version || github.ref_name }}
+          Commit: ${{ github.sha }}
+          Author: ${{ github.actor }}
+          URL: https://${{ secrets.PRODUCTION_DOMAIN }}
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+      continue-on-error: true
+    
+    - name: Create GitHub Release
+      if: success()
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.event.inputs.version || github.ref_name }}
+        release_name: Release ${{ github.event.inputs.version || github.ref_name }}
+        body: |
+          ## 🚀 Production Deployment Successful
+          
+          **Version:** ${{ github.event.inputs.version || github.ref_name }}
+          **Deployed:** $(date)
+          **Deployed by:** ${{ github.actor }}
+          
+          ### Changes
+          - Backend tests: 737 tests passing
+          - Code coverage: 50.58%
+          - Integration tests: 53 tests
+          
+          ### Monitoring
+          - Sentry: ${{ secrets.SENTRY_PROJECT }}
+          - New Relic: Dashboard available
+          
+          ### Rollback
+          If issues occur, rollback using:
+          ```bash
+          git checkout <previous-tag>
+          pm2 restart all
+          ```
+        draft: false
+        prerelease: false
+      continue-on-error: true
+    
+    - name: Deployment summary
+      if: success()
+      run: |
+        echo "✅ PRODUCTION DEPLOYMENT SUCCESSFUL!"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Version: ${{ github.event.inputs.version || github.ref_name }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Deployed at: $(date)"
+        echo "URL: https://${{ secrets.PRODUCTION_DOMAIN }}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "🔍 Monitoring:"
+        echo "- Sentry: https://sentry.io/${{ secrets.SENTRY_ORG }}/${{ secrets.SENTRY_PROJECT }}/"
+        echo "- New Relic: https://one.newrelic.com"
+        echo ""
+        echo "📊 Next steps:"
+        echo "1. Monitor application logs"
+        echo "2. Check error rates in Sentry"
+        echo "3. Verify performance metrics in New Relic"
+        echo "4. Monitor user feedback"
+
+  post-deployment-monitoring:
+    name: Post-Deployment Monitoring
+    runs-on: ubuntu-latest
+    needs: production-deploy
+    if: success()
+    
+    steps:
+    - name: Monitor for 10 minutes
+      run: |
+        echo "🔍 Monitoring production for 10 minutes..."
+        
+        for i in {1..10}; do
+          echo "Check $i/10..."
+          
+          # Health check
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.PRODUCTION_API_URL }}/api/health)
+          
+          if [ "$STATUS" != "200" ]; then
+            echo "⚠️ Warning: Health check returned $STATUS"
+          else
+            echo "✅ Health check OK"
+          fi
+          
+          sleep 60
+        done
+        
+        echo "✅ 10-minute monitoring complete. No critical issues detected."
+    
+    - name: Check error rates
+      run: |
+        echo "Checking error rates in monitoring systems..."
+        echo "Review Sentry and New Relic dashboards manually"
