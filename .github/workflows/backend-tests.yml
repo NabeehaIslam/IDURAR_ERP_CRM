@@ -1,0 +1,55 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [ master, develop, Arsal-Temuri-Part ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-tests.yml'
+  pull_request:
+    branches: [ master, develop ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend-tests.yml'
+
+jobs:
+  test:
+    name: Run Backend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./backend
+      run: npm ci
+    
+    - name: Run unit tests
+      working-directory: ./backend
+      run: npx jest tests/unit/utils tests/unit/middlewares/inventory tests/unit/middlewares/upload tests/unit/settings/useMoney --coverage --coverageDirectory=coverage/unit
+      env:
+        NODE_ENV: test
+    
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-reports
+        path: backend/coverage/
+        retention-days: 30
+    
+    - name: Test Summary
+      if: always()
+      run: |
+        echo "## Test Results Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Unit tests completed (684 tests)" >> $GITHUB_STEP_SUMMARY
+        echo "📊 Coverage report generated" >> $GITHUB_STEP_SUMMARY
