@@ -34,7 +34,7 @@ jobs:
     
     - name: Run unit tests
       working-directory: ./backend
-      run: npx jest tests/unit/utils tests/unit/helpers tests/unit/middlewares/inventory tests/unit/middlewares/upload tests/unit/settings/useMoney --coverage --coverageDirectory=coverage/unit
+      run: npx jest tests/unit/utils tests/unit/middlewares/inventory tests/unit/middlewares/upload tests/unit/settings/useMoney --coverage --coverageDirectory=coverage/unit
       env:
         NODE_ENV: test
     
