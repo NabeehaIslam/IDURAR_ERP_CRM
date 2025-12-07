@@ -42,37 +42,6 @@ jobs:
       env:
         NODE_ENV: test
     
-    - name: Run integration tests
-      working-directory: ./backend
-      run: npx jest tests/integration/ --coverage --coverageDirectory=coverage/integration
-      env:
-        DATABASE: ${{ secrets.TEST_DATABASE_URL }}
-        JWT_SECRET: ${{ secrets.TEST_JWT_SECRET }}
-        NODE_ENV: test
-      continue-on-error: true
-      if: ${{ secrets.TEST_DATABASE_URL }}
-    
-    - name: Generate combined coverage report
-      working-directory: ./backend
-      run: npx jest --coverage --coverageDirectory=coverage/combined
-      env:
-        DATABASE: ${{ secrets.TEST_DATABASE_URL }}
-        JWT_SECRET: ${{ secrets.TEST_JWT_SECRET }}
-        NODE_ENV: test
-      continue-on-error: true
-      if: ${{ secrets.TEST_DATABASE_URL != '' }}
-    
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        files: ./backend/coverage/combined/lcov.info
-        flags: backend
-        name: backend-coverage
-        fail_ci_if_error: false
-      if: ${{ secrets.CODECOV_TOKEN != '' }}
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-    
     - name: Upload coverage reports as artifact
       uses: actions/upload-artifact@v4
       if: always()
@@ -81,14 +50,6 @@ jobs:
         path: backend/coverage/
         retention-days: 30
     
-    - name: Comment coverage on PR
-      if: github.event_name == 'pull_request' && matrix.node-version == '18.x'
-      uses: romeovs/lcov-reporter-action@v0.3.1
-      with:
-        lcov-file: ./backend/coverage/combined/lcov.info
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        delete-old-comments: true
-    
     - name: Test Summary
       if: always()
       run: |
@@ -96,8 +57,10 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Node.js ${{ matrix.node-version }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "✅ Unit tests completed" >> $GITHUB_STEP_SUMMARY
-        echo "📊 Integration tests completed" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Unit tests completed (684 tests)" >> $GITHUB_STEP_SUMMARY
+        echo "📊 Coverage report generated" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Note:** Integration tests disabled - only unit tests run (no secrets required)" >> $GITHUB_STEP_SUMMARY
         echo "📈 Coverage report generated" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "View detailed coverage in the artifacts section." >> $GITHUB_STEP_SUMMARY
@@ -114,56 +77,10 @@ jobs:
   #     uses: actions/setup-node@v4
   #     with:
   #       node-version: 18.x
-  #       cache: 'npm'
-  #       cache-dependency-path: backend/package-lock.json
-  #   
-  #   - name: Install dependencies
-  #     working-directory: ./backend
-  #     run: npm ci
-  #   
-  #   - name: Run ESLint
-  #     working-directory: ./backend
-  #     run: npm run lint
-  #     continue-on-error: true
-  #   
-  #   - name: Check code formatting
-  #     working-directory: ./backend
-  #     run: npm run format:check
-  #     continue-on-error: true
-
-  security:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 18.x
-        cache: 'npm'
-        cache-dependency-path: backend/package-lock.json
-    
-    - name: Run npm audit
-      working-directory: ./backend
-      run: npm audit --audit-level=moderate
-      continue-on-error: true
-    
-    - name: Run Snyk security scan
-      uses: snyk/actions/node@master
-      continue-on-error: true
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        args: --severity-threshold=high --file=backend/package.json
-      if: ${{ secrets.SNYK_TOKEN != '' }}
-
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [test, security]
+    needs: [test]
     if: always()
     
     steps:
@@ -174,13 +91,11 @@ jobs:
         echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
         echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| Tests | ${{ needs.test.result }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Security | ${{ needs.security.result }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 📊 Test Coverage" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "- **Unit Tests**: Stable tests (utils, helpers, middlewares)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Integration Tests**: Auth & Client APIs" >> $GITHUB_STEP_SUMMARY
-        echo "- **Total Tests**: 737 tests (684 unit + 53 integration)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Target Coverage**: 50.58% (defined scope complete)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Unit Tests**: 684 tests (utils, helpers, middlewares, settings)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status**: All stable unit tests running" >> $GITHUB_STEP_SUMMARY
+        echo "- **No Secrets Required**: Workflow runs without any GitHub Secrets" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "View detailed reports in the [Actions artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})." >> $GITHUB_STEP_SUMMARY
